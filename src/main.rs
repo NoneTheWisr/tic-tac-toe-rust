@@ -5,6 +5,100 @@ use tetra::input::{self, MouseButton};
 use tetra::math::Vec2;
 use tetra::{Context, ContextBuilder, State};
 
+// -------------------------------------------------------------------------- //
+// Tic Tac Toe "Rules" / Non-UI Section                                       //
+// -------------------------------------------------------------------------- //
+struct GameData {
+    state: GameState,
+    board: [CellState; 9],
+    num_moves: u8,
+}
+
+impl GameData {
+    fn new() -> Self {
+        GameData {
+            state: GameState::XsTurn,
+            board: [CellState::Empty; 9],
+            num_moves: 0,
+        }
+    }
+
+    fn turn(&mut self, board_index: usize) -> Option<GameState> {
+        let mark;
+        match self.state {
+            GameState::XsTurn => mark = CellState::X,
+            GameState::OsTurn => mark = CellState::O,
+            _ => return None,
+        };
+
+        let ref mut cell = self.board[board_index];
+        match cell {
+            CellState::Empty => *cell = mark,
+            _ => return None,
+        }
+
+        self.check_board(board_index, mark);
+
+        return Some(self.state);
+    }
+
+    fn check_board(&mut self, board_index: usize, mark: CellState) {
+        let mut won = false;
+        let (x, y) = (board_index % 3, board_index / 3);
+        let check = |c: &CellState| *c == mark;
+
+        // primary diagonal
+        if x == y {
+            won |= self.board.iter().step_by(4).all(check);
+        }
+        // secondary diagonal
+        if x + y == 2 {
+            won |= self.board.iter().skip(2).step_by(2).all(check);
+        }
+        // rows and colons
+        won |= self.board.iter().skip(y * 3).take(3).all(check)
+            || self.board.iter().skip(x).step_by(3).all(check);
+
+        if won {
+            return match self.state {
+                GameState::XsTurn => self.state = GameState::XWon,
+                GameState::OsTurn => self.state = GameState::OWon,
+                _ => (),
+            };
+        }
+
+        if self.num_moves == 9 {
+            return self.state = GameState::Stalemate;
+        }
+
+        match self.state {
+            GameState::XsTurn => self.state = GameState::OsTurn,
+            GameState::OsTurn => self.state = GameState::XsTurn,
+            _ => (),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum GameState {
+    XsTurn,
+    OsTurn,
+    XWon,
+    OWon,
+    Stalemate,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum CellState {
+    Empty,
+    X,
+    O,
+}
+
+// -------------------------------------------------------------------------- //
+// Tetra / UI Section                                                         //
+// -------------------------------------------------------------------------- //
+
 const TITLE: &str = "Tic Tac Toe";
 
 const SCREEN_WIDTH: f32 = 800.0;
@@ -19,35 +113,9 @@ const BOARD_BEG_Y: f32 = (SCREEN_HEIGHT - BOARD_SIZE) / 2.0;
 const BOARD_END_X: f32 = BOARD_BEG_X + BOARD_SIZE;
 const BOARD_END_Y: f32 = BOARD_BEG_Y + BOARD_SIZE;
 
-struct GameState {
-    turn: Turn,
-    board: [CellState; 9],
-}
 struct TetraState {
-    game_state: GameState,
+    game_state: GameData,
     textures: MarkTextures,
-}
-
-#[derive(Clone, Copy)]
-enum Turn {
-    X,
-    O,
-}
-
-#[derive(Clone, Copy)]
-enum CellState {
-    Empty,
-    X,
-    O,
-}
-
-impl From<Turn> for CellState {
-    fn from(turn: Turn) -> Self {
-        match turn {
-            Turn::O => CellState::O,
-            Turn::X => CellState::X,
-        }
-    }
 }
 
 struct MarkTextures {
@@ -58,10 +126,7 @@ struct MarkTextures {
 impl TetraState {
     fn new(ctx: &mut Context) -> tetra::Result<TetraState> {
         Ok(TetraState {
-            game_state: GameState {
-                turn: Turn::X,
-                board: [CellState::Empty; 9],
-            },
+            game_state: GameData::new(),
             textures: MarkTextures {
                 x: Texture::new(ctx, "resources/x.png")?,
                 o: Texture::new(ctx, "resources/o.png")?,
@@ -91,7 +156,7 @@ impl State for TetraState {
 
         // Draw the marks
         for (i, &item) in self.game_state.board.iter().enumerate() {
-            let texture: &Texture;
+            let texture;
             match item {
                 CellState::X => texture = &self.textures.x,
                 CellState::O => texture = &self.textures.o,
@@ -116,7 +181,7 @@ impl State for TetraState {
     }
 
     fn update(&mut self, ctx: &mut Context) -> tetra::Result {
-        if input::is_mouse_button_down(ctx, MouseButton::Left) {
+        if input::is_mouse_button_pressed(ctx, MouseButton::Left) {
             let mouse_pos = input::get_mouse_position(ctx);
 
             if mouse_pos.x >= BOARD_BEG_X
@@ -132,14 +197,7 @@ impl State for TetraState {
                 let board_x = (offset_x / cell_size) as usize;
                 let board_y = (offset_y / cell_size) as usize;
 
-                let ref mut cell = self.game_state.board[board_y * 3 + board_x];
-                if let CellState::Empty = cell {
-                    *cell = self.game_state.turn.into();
-                    self.game_state.turn = match self.game_state.turn {
-                        Turn::O => Turn::X,
-                        Turn::X => Turn::O,
-                    }
-                }
+                self.game_state.turn(board_y * 3 + board_x);
             }
         }
 
