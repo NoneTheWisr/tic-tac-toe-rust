@@ -1,7 +1,8 @@
 use tetra::graphics::mesh::Mesh;
+use tetra::graphics::text::{Font, Text};
 use tetra::graphics::DrawParams;
 use tetra::graphics::{self, mesh::ShapeStyle, Color, Rectangle, Texture};
-use tetra::input::{self, MouseButton};
+use tetra::input::{self, MouseButton, Key};
 use tetra::math::Vec2;
 use tetra::{Context, ContextBuilder, State};
 
@@ -53,7 +54,7 @@ impl GameData {
         }
         // secondary diagonal
         if x + y == 2 {
-            won |= self.board.iter().skip(2).step_by(2).all(check);
+            won |= self.board.iter().skip(2).step_by(2).take(3).all(check);
         }
         // rows and colons
         won |= self.board.iter().skip(y * 3).take(3).all(check)
@@ -88,7 +89,7 @@ enum GameState {
     Stalemate,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum CellState {
     Empty,
     X,
@@ -105,7 +106,9 @@ const SCREEN_WIDTH: f32 = 800.0;
 const SCREEN_HEIGHT: f32 = 600.0;
 
 const MARK_SIZE: f32 = 64.0;
-const SPACING: f32 = 15.0;
+const SPACING: f32 = 30.0;
+
+const FONT_SIZE: f32 = 64.0;
 
 const BOARD_SIZE: f32 = MARK_SIZE * 3.0 + SPACING * 2.0;
 const BOARD_BEG_X: f32 = (SCREEN_WIDTH - BOARD_SIZE) / 2.0;
@@ -114,8 +117,9 @@ const BOARD_END_X: f32 = BOARD_BEG_X + BOARD_SIZE;
 const BOARD_END_Y: f32 = BOARD_BEG_Y + BOARD_SIZE;
 
 struct TetraState {
-    game_state: GameData,
+    game_data: GameData,
     textures: MarkTextures,
+    text: Text,
 }
 
 struct MarkTextures {
@@ -126,11 +130,15 @@ struct MarkTextures {
 impl TetraState {
     fn new(ctx: &mut Context) -> tetra::Result<TetraState> {
         Ok(TetraState {
-            game_state: GameData::new(),
+            game_data: GameData::new(),
             textures: MarkTextures {
                 x: Texture::new(ctx, "resources/x.png")?,
                 o: Texture::new(ctx, "resources/o.png")?,
             },
+            text: Text::new(
+                "",
+                Font::vector(ctx, "resources/FredokaOne-Regular.ttf", FONT_SIZE)?,
+            ),
         })
     }
 }
@@ -155,7 +163,7 @@ impl State for TetraState {
         .draw(ctx, DrawParams::new().color(main_color));
 
         // Draw the marks
-        for (i, &item) in self.game_state.board.iter().enumerate() {
+        for (i, &item) in self.game_data.board.iter().enumerate() {
             let texture;
             match item {
                 CellState::X => texture = &self.textures.x,
@@ -177,11 +185,30 @@ impl State for TetraState {
             )
         }
 
+        // Draw the status text
+        let status = match self.game_data.state {
+            GameState::XsTurn => "X's turn",
+            GameState::OsTurn => "O's turn",
+            GameState::XWon => "X wins!",
+            GameState::OWon => "O wins!",
+            GameState::Stalemate => "Stalemate",
+        };
+
+        self.text.set_content(status);
+        self.text.draw(
+            ctx,
+            DrawParams::new()
+                .position(Vec2::new(BOARD_BEG_X - SPACING, BOARD_BEG_Y - FONT_SIZE - 1.5 * SPACING))
+                .color(main_color),
+        );
+
         Ok(())
     }
 
     fn update(&mut self, ctx: &mut Context) -> tetra::Result {
-        if input::is_mouse_button_pressed(ctx, MouseButton::Left) {
+        if input::is_key_pressed(ctx, Key::Enter) {
+            self.game_data = GameData::new();
+        } else if input::is_mouse_button_pressed(ctx, MouseButton::Left) {
             let mouse_pos = input::get_mouse_position(ctx);
 
             if mouse_pos.x >= BOARD_BEG_X
@@ -197,7 +224,7 @@ impl State for TetraState {
                 let board_x = (offset_x / cell_size) as usize;
                 let board_y = (offset_y / cell_size) as usize;
 
-                self.game_state.turn(board_y * 3 + board_x);
+                self.game_data.turn(board_y * 3 + board_x);
             }
         }
 
