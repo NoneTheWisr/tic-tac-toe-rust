@@ -10,9 +10,21 @@ const TITLE: &str = "Tic Tac Toe";
 const SCREEN_WIDTH: f32 = 800.0;
 const SCREEN_HEIGHT: f32 = 600.0;
 
+const MARK_SIZE: f32 = 64.0;
+const SPACING: f32 = 15.0;
+
+const BOARD_SIZE: f32 = MARK_SIZE * 3.0 + SPACING * 2.0;
+const BOARD_BEG_X: f32 = (SCREEN_WIDTH - BOARD_SIZE) / 2.0;
+const BOARD_BEG_Y: f32 = (SCREEN_HEIGHT - BOARD_SIZE) / 2.0;
+const BOARD_END_X: f32 = BOARD_BEG_X + BOARD_SIZE;
+const BOARD_END_Y: f32 = BOARD_BEG_Y + BOARD_SIZE;
+
 struct GameState {
-    current_turn: Turn,
-    grid: [CellState; 9],
+    turn: Turn,
+    board: [CellState; 9],
+}
+struct TetraState {
+    game_state: GameState,
     textures: MarkTextures,
 }
 
@@ -43,11 +55,13 @@ struct MarkTextures {
     o: Texture,
 }
 
-impl GameState {
-    fn new(ctx: &mut Context) -> tetra::Result<GameState> {
-        Ok(GameState {
-            current_turn: Turn::X,
-            grid: [CellState::Empty; 9],
+impl TetraState {
+    fn new(ctx: &mut Context) -> tetra::Result<TetraState> {
+        Ok(TetraState {
+            game_state: GameState {
+                turn: Turn::X,
+                board: [CellState::Empty; 9],
+            },
             textures: MarkTextures {
                 x: Texture::new(ctx, "resources/x.png")?,
                 o: Texture::new(ctx, "resources/o.png")?,
@@ -56,53 +70,45 @@ impl GameState {
     }
 }
 
-impl State for GameState {
+impl State for TetraState {
     fn draw(&mut self, ctx: &mut Context) -> tetra::Result {
         graphics::clear(ctx, Color::rgb(0.392, 0.584, 0.929));
 
-        let mark_size = self.textures.o.width() as f32;
-        let gap_size: f32 = 15.0;
-        let bbox_side: f32 = mark_size * 3.0 + gap_size * 2.0;
+        let main_color = Color::rgba8(50, 84, 137, 255);
 
-        let start_x = (SCREEN_WIDTH - bbox_side) / 2.0;
-        let start_y = (SCREEN_HEIGHT - bbox_side) / 2.0;
-
-        let mark_color = Color::rgba8(50, 84, 137, 255);
-        let border_color = mark_color;
-
+        // Draw the border
         Mesh::rectangle(
             ctx,
             ShapeStyle::Stroke(7.0),
             Rectangle::new(
-                start_x - 15.0,
-                start_y - 15.0,
-                bbox_side + 30.0,
-                bbox_side + 30.0,
+                BOARD_BEG_X - SPACING,
+                BOARD_BEG_Y - SPACING,
+                BOARD_SIZE + 2.0 * SPACING,
+                BOARD_SIZE + 2.0 * SPACING,
             ),
         )?
-        .draw(ctx, DrawParams::new().color(border_color));
+        .draw(ctx, DrawParams::new().color(main_color));
 
-        for (i, &item) in self.grid.iter().enumerate() {
+        // Draw the marks
+        for (i, &item) in self.game_state.board.iter().enumerate() {
+            let texture: &Texture;
+            match item {
+                CellState::X => texture = &self.textures.x,
+                CellState::O => texture = &self.textures.o,
+                CellState::Empty => continue,
+            }
+
             let x = i % 3;
             let y = i / 3;
-
-            if let CellState::Empty = item {
-                continue;
-            }
-            let texture = match item {
-                CellState::X => &self.textures.x,
-                CellState::O => &self.textures.o,
-                CellState::Empty => unreachable!(),
-            };
 
             texture.draw(
                 ctx,
                 DrawParams::new()
                     .position(Vec2::new(
-                        start_x + x as f32 * (mark_size + gap_size),
-                        start_y + y as f32 * (mark_size + gap_size),
+                        BOARD_BEG_X + x as f32 * (MARK_SIZE + SPACING),
+                        BOARD_BEG_Y + y as f32 * (MARK_SIZE + SPACING),
                     ))
-                    .color(mark_color),
+                    .color(main_color),
             )
         }
 
@@ -113,33 +119,23 @@ impl State for GameState {
         if input::is_mouse_button_down(ctx, MouseButton::Left) {
             let mouse_pos = input::get_mouse_position(ctx);
 
-            let mark_size = self.textures.o.width() as f32;
-            let gap_size: f32 = 15.0;
-            let bbox_side: f32 = mark_size * 3.0 + gap_size * 2.0;
-
-            let start_x = (SCREEN_WIDTH - bbox_side) / 2.0;
-            let start_y = (SCREEN_HEIGHT - bbox_side) / 2.0;
-
-            let end_x = start_x + bbox_side;
-            let end_y = start_y + bbox_side;
-
-            if mouse_pos.x >= start_x
-                && mouse_pos.x <= end_x
-                && mouse_pos.y >= start_y
-                && mouse_pos.y <= end_y
+            if mouse_pos.x >= BOARD_BEG_X
+                && mouse_pos.x <= BOARD_END_X
+                && mouse_pos.y >= BOARD_BEG_Y
+                && mouse_pos.y <= BOARD_END_Y
             {
-                let offset_x = mouse_pos.x - start_x;
-                let offset_y = mouse_pos.y - start_y;
+                let offset_x = mouse_pos.x - BOARD_BEG_X;
+                let offset_y = mouse_pos.y - BOARD_BEG_Y;
 
-                let cell_side = bbox_side / 3.0;
+                let cell_size = BOARD_SIZE / 3.0;
 
-                let ix = (offset_x / cell_side) as usize;
-                let iy = (offset_y / cell_side) as usize;
+                let board_x = (offset_x / cell_size) as usize;
+                let board_y = (offset_y / cell_size) as usize;
 
-                let ref mut cell = self.grid[iy * 3 + ix];
+                let ref mut cell = self.game_state.board[board_y * 3 + board_x];
                 if let CellState::Empty = cell {
-                    *cell = self.current_turn.into();
-                    self.current_turn = match self.current_turn {
+                    *cell = self.game_state.turn.into();
+                    self.game_state.turn = match self.game_state.turn {
                         Turn::O => Turn::X,
                         Turn::X => Turn::O,
                     }
@@ -156,5 +152,5 @@ fn main() -> tetra::Result {
         .quit_on_escape(true)
         .show_mouse(true)
         .build()?
-        .run(GameState::new)
+        .run(TetraState::new)
 }
