@@ -1,4 +1,4 @@
-use tetra::graphics::{self, Color, Texture, DrawParams};
+use tetra::graphics::{self, Color, Texture};
 use tetra::math::Vec2;
 use tetra::{Context, ContextBuilder, State};
 
