@@ -38,6 +38,7 @@ impl GameData {
             _ => return None,
         }
 
+        self.num_moves += 1;
         self.check_board(board_index, mark);
 
         return Some(self.state);
