@@ -1,6 +1,6 @@
-use tetra::graphics::DrawParams;
 use tetra::graphics::mesh::Mesh;
-use tetra::graphics::{self, Color, Texture, Rectangle, mesh::{ShapeStyle}};
+use tetra::graphics::DrawParams;
+use tetra::graphics::{self, mesh::ShapeStyle, Color, Rectangle, Texture};
 use tetra::input::{self, MouseButton};
 use tetra::math::Vec2;
 use tetra::{Context, ContextBuilder, State};
@@ -67,12 +67,20 @@ impl State for GameState {
         let start_x = (SCREEN_WIDTH - bbox_side) / 2.0;
         let start_y = (SCREEN_HEIGHT - bbox_side) / 2.0;
 
-        Mesh::rectangle(ctx, ShapeStyle::Stroke(7.0), Rectangle::new(
-            start_x - 15.0,
-            start_y - 15.0,
-            bbox_side + 30.0,
-            bbox_side + 30.0,
-        ))?.draw(ctx, DrawParams::new());
+        let mark_color = Color::rgba8(50, 84, 137, 255);
+        let border_color = mark_color;
+
+        Mesh::rectangle(
+            ctx,
+            ShapeStyle::Stroke(7.0),
+            Rectangle::new(
+                start_x - 15.0,
+                start_y - 15.0,
+                bbox_side + 30.0,
+                bbox_side + 30.0,
+            ),
+        )?
+        .draw(ctx, DrawParams::new().color(border_color));
 
         for (i, &item) in self.grid.iter().enumerate() {
             let x = i % 3;
@@ -89,10 +97,12 @@ impl State for GameState {
 
             texture.draw(
                 ctx,
-                Vec2::new(
-                    start_x + x as f32 * (mark_size + gap_size),
-                    start_y + y as f32 * (mark_size + gap_size),
-                ),
+                DrawParams::new()
+                    .position(Vec2::new(
+                        start_x + x as f32 * (mark_size + gap_size),
+                        start_y + y as f32 * (mark_size + gap_size),
+                    ))
+                    .color(mark_color),
             )
         }
 
