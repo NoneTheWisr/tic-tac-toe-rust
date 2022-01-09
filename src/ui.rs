@@ -1,4 +1,4 @@
-use crate::logic::{CellState, GameData, GameState};
+use crate::logic::*;
 
 use tetra::graphics::mesh::Mesh;
 use tetra::graphics::text::{Font, Text};
@@ -45,7 +45,7 @@ pub fn run() -> tetra::Result {
 // -------------------------------------------------------------------------- //
 
 struct TetraState {
-    game_data: GameData,
+    game: Game,
     textures: MarkTextures,
     text: Text,
 }
@@ -58,7 +58,7 @@ struct MarkTextures {
 impl TetraState {
     fn new(ctx: &mut Context) -> tetra::Result<TetraState> {
         Ok(TetraState {
-            game_data: GameData::new(),
+            game: Game::new(),
             textures: MarkTextures {
                 x: Texture::new(ctx, "resources/x.png")?,
                 o: Texture::new(ctx, "resources/o.png")?,
@@ -91,12 +91,12 @@ impl State for TetraState {
         .draw(ctx, DrawParams::new().color(main_color));
 
         // Draw the marks
-        for (i, &item) in self.game_data.board().iter().enumerate() {
+        for (i, &item) in self.game.board().iter().enumerate() {
             let texture;
             match item {
-                CellState::X => texture = &self.textures.x,
-                CellState::O => texture = &self.textures.o,
-                CellState::Empty => continue,
+                Tile::Marked(Player::X) => texture = &self.textures.x,
+                Tile::Marked(Player::O) => texture = &self.textures.o,
+                Tile::Empty => continue,
             }
 
             let x = i % 3;
@@ -114,12 +114,12 @@ impl State for TetraState {
         }
 
         // Draw the status text
-        let status = match self.game_data.state() {
-            GameState::XsTurn => "X's turn",
-            GameState::OsTurn => "O's turn",
-            GameState::XWon => "X wins!",
-            GameState::OWon => "O wins!",
-            GameState::Stalemate => "Stalemate",
+        let status = match self.game.state() {
+            GameState::InProgress(Player::X) => "X's turn",
+            GameState::InProgress(Player::O) => "O's turn",
+            GameState::Won(Player::X) => "X wins!",
+            GameState::Won(Player::O) => "O wins!",
+            GameState::Tied => "Stalemate",
         };
 
         self.text.set_content(status);
@@ -138,7 +138,7 @@ impl State for TetraState {
 
     fn update(&mut self, ctx: &mut Context) -> tetra::Result {
         if input::is_key_pressed(ctx, Key::Enter) {
-            self.game_data = GameData::new();
+            self.game = Game::new();
         } else if input::is_mouse_button_pressed(ctx, MouseButton::Left) {
             let mouse_pos = input::get_mouse_position(ctx);
 
@@ -155,7 +155,10 @@ impl State for TetraState {
                 let board_x = (offset_x / cell_size) as usize;
                 let board_y = (offset_y / cell_size) as usize;
 
-                self.game_data.turn(board_y * 3 + board_x);
+                match self.game.make_move(None, board_y * 3 + board_x) {
+                    Ok(game) => {self.game = game},
+                    Err(_) => (),
+                }
             }
         }
 

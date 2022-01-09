@@ -1,7 +1,7 @@
 const BOARD_SIZE: usize = 3;
 const BOARD_LENGTH: usize = 9;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Player {
     X,
     O,
@@ -16,7 +16,7 @@ impl Player {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Tile {
     Marked(Player),
     Empty,
@@ -31,7 +31,7 @@ impl Tile {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum GameState {
     InProgress(Player),
     Won(Player),
@@ -54,15 +54,16 @@ impl GameState {
     }
 }
 
-type Board = [Tile; BOARD_SIZE];
+type Board = [Tile; BOARD_LENGTH];
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Game {
     state: GameState,
     board: Board,
     moves: u8,
 }
 
+#[derive(Debug)]
 pub enum MoveError {
     TileTaken,
     WrongTurn,
@@ -74,7 +75,7 @@ impl Game {
     pub fn new() -> Self {
         Game {
             state: GameState::InProgress(Player::X),
-            board: [Tile::Empty; BOARD_SIZE],
+            board: [Tile::Empty; BOARD_LENGTH],
             moves: 0,
         }
     }
@@ -88,7 +89,7 @@ impl Game {
     }
 
     pub fn make_move(&self, player: Option<Player>, board_index: usize) -> Result<Game, MoveError> {
-        if board_index >= BOARD_SIZE {
+        if board_index >= BOARD_LENGTH {
             return Err(MoveError::InvalidIndex);
         }
 
@@ -112,39 +113,45 @@ impl Game {
         }
 
         let marked_tile = Tile::Marked(player);
-        let next_turn = self.clone();
+        let (board, state) = self.calculate_new_state(board_index, marked_tile);
 
-        next_turn.board[board_index] = marked_tile;
-        next_turn.moves += 1;
-        next_turn.state = next_turn.calculate_new_state(board_index, marked_tile);
-
-        return Ok(next_turn);
+        return Ok(Game {
+            board,
+            moves: self.moves + 1,
+            state,
+        });
     }
 
-    fn calculate_new_state(&self, board_index: usize, tile: Tile) -> GameState {
+    fn calculate_new_state(&self, board_index: usize, tile: Tile) -> (Board, GameState) {
         let (x, y) = (board_index % BOARD_SIZE, board_index / BOARD_SIZE);
         let check = |c: &Tile| *c == tile;
         let mut won = false;
 
-        let (ref b, s) = (self.board, BOARD_SIZE);
+        let mut board = self.board.clone();
+        board[board_index] = tile;
+
+        let s = BOARD_SIZE;
         // primary diagonal
         if x == y {
-            won |= b.iter().step_by(s + 1).all(check);
+            won |= board.iter().step_by(s + 1).all(check);
         }
         // secondary diagonal
         if x + y == s - 1 {
-            won |= b.iter().skip(s - 1).step_by(s - 1).take(s).all(check);
+            won |= board.iter().skip(s - 1).step_by(s - 1).take(s).all(check);
         }
         // rows and colons
-        won |= b.iter().skip(y * s).take(s).all(check)
-            || b.iter().skip(x).step_by(s).all(check);
+        won |= board.iter().skip(y * s).take(s).all(check)
+            || board.iter().skip(x).step_by(s).all(check);
 
         if won {
-            return GameState::Won(self.state.current_player());
+            return (board, GameState::Won(self.state.current_player()));
         }
-        if self.moves as usize == BOARD_SIZE {
-            return GameState::Tied;
+        if self.moves as usize == BOARD_LENGTH {
+            return (board, GameState::Tied);
         }
-        return GameState::InProgress(self.state.current_player().next());
+        return (
+            board,
+            GameState::InProgress(self.state.current_player().next()),
+        );
     }
 }
