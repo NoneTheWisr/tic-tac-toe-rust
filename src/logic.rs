@@ -1,31 +1,81 @@
-pub struct GameData {
-    state: GameState,
-    board: [CellState; 9],
-    num_moves: u8,
-}
+const BOARD_SIZE: usize = 3;
+const BOARD_LENGTH: usize = 9;
 
-#[derive(Clone, Copy)]
-pub enum GameState {
-    XsTurn,
-    OsTurn,
-    XWon,
-    OWon,
-    Stalemate,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum CellState {
-    Empty,
+#[derive(Copy, Clone, PartialEq)]
+pub enum Player {
     X,
     O,
 }
 
-impl GameData {
+impl Player {
+    fn next(&self) -> Self {
+        match self {
+            Self::X => Self::O,
+            Self::O => Self::X,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum Tile {
+    Marked(Player),
+    Empty,
+}
+
+impl Tile {
+    fn is_marked(&self) -> bool {
+        match self {
+            Self::Empty => false,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum GameState {
+    InProgress(Player),
+    Won(Player),
+    Tied,
+}
+
+impl GameState {
+    fn is_finished(&self) -> bool {
+        match self {
+            Self::InProgress(_) => false,
+            _ => true,
+        }
+    }
+
+    fn current_player(&self) -> Player {
+        match self {
+            Self::InProgress(player) => player.clone(),
+            _ => panic!("tried to get the current player of a finished game"),
+        }
+    }
+}
+
+type Board = [Tile; BOARD_SIZE];
+
+#[derive(Copy, Clone)]
+pub struct Game {
+    state: GameState,
+    board: Board,
+    moves: u8,
+}
+
+pub enum MoveError {
+    TileTaken,
+    WrongTurn,
+    InvalidIndex,
+    GameFinished,
+}
+
+impl Game {
     pub fn new() -> Self {
-        GameData {
-            state: GameState::XsTurn,
-            board: [CellState::Empty; 9],
-            num_moves: 0,
+        Game {
+            state: GameState::InProgress(Player::X),
+            board: [Tile::Empty; BOARD_SIZE],
+            moves: 0,
         }
     }
 
@@ -33,63 +83,68 @@ impl GameData {
         &self.state
     }
 
-    pub fn board(&self) -> &[CellState; 9] {
+    pub fn board(&self) -> &Board {
         &self.board
     }
 
-    pub fn turn(&mut self, board_index: usize) -> Option<GameState> {
-        let mark;
-        match self.state {
-            GameState::XsTurn => mark = CellState::X,
-            GameState::OsTurn => mark = CellState::O,
-            _ => return None,
+    pub fn make_move(&self, player: Option<Player>, board_index: usize) -> Result<Game, MoveError> {
+        if board_index >= BOARD_SIZE {
+            return Err(MoveError::InvalidIndex);
+        }
+
+        if self.state.is_finished() {
+            return Err(MoveError::GameFinished);
+        }
+
+        let player = match player {
+            Some(received) => {
+                let expected = self.state.current_player();
+                if received != expected {
+                    return Err(MoveError::WrongTurn);
+                }
+                received
+            }
+            None => self.state.current_player(),
         };
 
-        let ref mut cell = self.board[board_index];
-        match cell {
-            CellState::Empty => *cell = mark,
-            _ => return None,
+        if self.board[board_index].is_marked() {
+            return Err(MoveError::TileTaken);
         }
 
-        self.num_moves += 1;
-        self.check_board(board_index, mark);
+        let marked_tile = Tile::Marked(player);
+        let next_turn = self.clone();
 
-        return Some(self.state);
+        next_turn.board[board_index] = marked_tile;
+        next_turn.moves += 1;
+        next_turn.state = next_turn.calculate_new_state(board_index, marked_tile);
+
+        return Ok(next_turn);
     }
 
-    fn check_board(&mut self, board_index: usize, mark: CellState) {
+    fn calculate_new_state(&self, board_index: usize, tile: Tile) -> GameState {
+        let (x, y) = (board_index % BOARD_SIZE, board_index / BOARD_SIZE);
+        let check = |c: &Tile| *c == tile;
         let mut won = false;
-        let (x, y) = (board_index % 3, board_index / 3);
-        let check = |c: &CellState| *c == mark;
 
+        let (ref b, s) = (self.board, BOARD_SIZE);
         // primary diagonal
         if x == y {
-            won |= self.board.iter().step_by(4).all(check);
+            won |= b.iter().step_by(s + 1).all(check);
         }
         // secondary diagonal
-        if x + y == 2 {
-            won |= self.board.iter().skip(2).step_by(2).take(3).all(check);
+        if x + y == s - 1 {
+            won |= b.iter().skip(s - 1).step_by(s - 1).take(s).all(check);
         }
         // rows and colons
-        won |= self.board.iter().skip(y * 3).take(3).all(check)
-            || self.board.iter().skip(x).step_by(3).all(check);
+        won |= b.iter().skip(y * s).take(s).all(check)
+            || b.iter().skip(x).step_by(s).all(check);
 
         if won {
-            return match self.state {
-                GameState::XsTurn => self.state = GameState::XWon,
-                GameState::OsTurn => self.state = GameState::OWon,
-                _ => (),
-            };
+            return GameState::Won(self.state.current_player());
         }
-
-        if self.num_moves == 9 {
-            return self.state = GameState::Stalemate;
+        if self.moves as usize == BOARD_SIZE {
+            return GameState::Tied;
         }
-
-        match self.state {
-            GameState::XsTurn => self.state = GameState::OsTurn,
-            GameState::OsTurn => self.state = GameState::XsTurn,
-            _ => (),
-        }
+        return GameState::InProgress(self.state.current_player().next());
     }
 }
