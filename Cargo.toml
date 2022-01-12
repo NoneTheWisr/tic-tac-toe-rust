@@ -1,2 +1,6 @@
 [workspace]
-members = ["tic-tac-toe-rust-tetra"]
+members = [
+    "tic-tac-toe-rust-core",
+    "tic-tac-toe-rust-tetra",
+    "tic-tac-toe-rust-macroquad"
+]
